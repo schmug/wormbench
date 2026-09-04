@@ -112,7 +112,10 @@ fi
 compose() {
     local -a args=(-f "$BASE" -f "$PARTIAL")
     if [ "${#EXTRA_FILES[@]}" -gt 0 ]; then
-        args+=("${EXTRA_FILES[@]}")
+        local f
+        for f in "${EXTRA_FILES[@]}"; do
+            args+=(-f "$f")
+        done
     fi
     docker compose "${args[@]}" "$@"
 }
