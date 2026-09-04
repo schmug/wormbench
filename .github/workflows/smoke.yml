@@ -25,6 +25,8 @@ jobs:
             docker run --rm -v "$PWD/.ollama-ci:/root/.ollama" \
               --entrypoint /bin/sh ollama/ollama:0.6.8 \
               -c 'ollama serve & sleep 3; until ollama pull qwen2.5:1.5b; do sleep 3; done'
+            # the volume mount writes as root; make readable for actions/cache tar
+            sudo chmod -R a+rX .ollama-ci
           fi
           docker build -t wormbench-ollama:ci -f ci/ollama.Dockerfile .
 
