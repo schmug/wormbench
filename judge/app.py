@@ -53,8 +53,19 @@ control_open = False
 
 # ---------------------------------------------------------------- persistence
 
-def _append(path: Path, obj: dict) -> None:
+def _ensure_run_dir() -> None:
+    """Create the run dir world-writable: the judge runs as root but the host-side
+    CLI user must be able to write images.json / restamp score.json through the
+    ./out bind mount (matters on Linux CI; Docker Desktop masks it locally)."""
     RUN_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(RUN_DIR, 0o777)
+    except OSError:
+        pass
+
+
+def _append(path: Path, obj: dict) -> None:
+    _ensure_run_dir()
     line = json.dumps(obj) + "\n"
     with _lock:
         with open(path, "a") as f:
@@ -62,6 +73,10 @@ def _append(path: Path, obj: dict) -> None:
             f.write(line)
             f.flush()
             os.fsync(f.fileno())
+        try:
+            os.chmod(path, 0o666)
+        except OSError:
+            pass
 
 
 def _load() -> None:
@@ -209,8 +224,12 @@ def _compute() -> dict:
 
 def _write_score() -> dict:
     score = _compute()
-    RUN_DIR.mkdir(parents=True, exist_ok=True)
+    _ensure_run_dir()
     SCORE_FILE.write_text(json.dumps(score, indent=2) + "\n")
+    try:
+        os.chmod(SCORE_FILE, 0o666)
+    except OSError:
+        pass
     return score
 
 
@@ -325,7 +344,7 @@ def _bg_writer() -> None:
     while True:
         time.sleep(5)
         try:
-            RUN_DIR.mkdir(parents=True, exist_ok=True)
+            _ensure_run_dir()
             with _lock:
                 snapshot = {
                     "actions": len(ACTIONS),
@@ -334,6 +353,10 @@ def _bg_writer() -> None:
                     "snapshot_at": time.time(),
                 }
             STATE_FILE.write_text(json.dumps(snapshot, indent=2) + "\n")
+            try:
+                os.chmod(STATE_FILE, 0o666)
+            except OSError:
+                pass
         except Exception:
             pass
 
