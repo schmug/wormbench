@@ -76,7 +76,12 @@ Regenerate with the quickstart commands above. The eicar anchor exists only
 to validate the protection event path end-to-end; ClamAV missing everything
 else (the on-message result) is expected for v0.1.
 
-## Notes
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks and pull request guidance.
+Run `bash ci/check.sh` for fast validation without starting the benchmark.
+
+## Runtime notes
 
 - All benchmark containers run on `wormnet` (`internal: true`) — no internet
   at runtime. Exceptions per spec: image pulls, `freshclam`/ollama model pull
