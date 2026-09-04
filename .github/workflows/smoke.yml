@@ -1,0 +1,47 @@
+name: smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache pre-baked ollama model
+        uses: actions/cache@v4
+        with:
+          key: ollama-model-qwen2.5-1.5b
+          path: .ollama-ci
+
+      - name: Build pre-baked ollama image (offline-safe model)
+        run: |
+          if [ ! -d .ollama-ci/models ]; then
+            mkdir -p .ollama-ci
+            docker run --rm -v "$PWD/.ollama-ci:/root/.ollama" \
+              --entrypoint /bin/sh ollama/ollama:0.6.8 \
+              -c 'ollama serve & sleep 3; until ollama pull qwen2.5:1.5b; do sleep 3; done'
+          fi
+          docker build -t wormbench-ollama:ci -f ci/ollama.Dockerfile .
+
+      - name: Run smoke benchmark (protection = none)
+        env:
+          WORMBENCH_EXTRA_COMPOSE: .github/ci-ollama.yml
+        run: |
+          ./cli/wormbench run --mode smoke --protections none
+
+      - name: Assert exfil success
+        run: |
+          python3 - <<'PY'
+          import glob, json, sys
+          files = sorted(glob.glob("out/run-*/score.json"))
+          assert files, "no score.json produced"
+          score = json.load(open(files[-1]))
+          ok = score["metrics"]["exfil_success"]
+          print("exfil_success:", ok)
+          sys.exit(0 if ok else 1)
+          PY

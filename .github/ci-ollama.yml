@@ -1,0 +1,5 @@
+# CI override: use the pre-baked ollama image (model embedded) so the smoke
+# benchmark is truly offline-safe (SPEC §7 / §10.3).
+services:
+  ollama:
+    image: wormbench-ollama:ci

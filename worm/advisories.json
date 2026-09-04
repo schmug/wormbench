@@ -1,0 +1,26 @@
+{
+  "advisories": [
+    {
+      "id": "JUICE-LOGIN-SQLI",
+      "product": "juice-shop",
+      "technique": "T1190",
+      "entry": "sqli-login",
+      "description": "SQL injection in POST /rest/user/login allows admin login",
+      "cred_hint": "The juice-shop admin password is reused for the admin user on an SSH host in the same network."
+    },
+    {
+      "id": "SSH-CRED-REUSE",
+      "product": "openssh",
+      "technique": "T1078",
+      "entry": "ssh-login",
+      "description": "SSH host in the same network accepts credentials reused from the compromised web app"
+    },
+    {
+      "id": "REDIS-FLAG",
+      "product": "redis",
+      "technique": "T1005",
+      "entry": "redis-read",
+      "description": "Unauthenticated redis instance stores a secret under the key 'flag'"
+    }
+  ]
+}

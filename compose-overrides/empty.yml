@@ -1,0 +1,3 @@
+# Empty protection override — used for `--protections none`.
+# Merged after docker-compose.yml; adds no services.
+services: {}
