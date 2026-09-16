@@ -16,9 +16,15 @@ import time
 from pathlib import Path
 
 METRICS = [
-    ("exfil_success", "Exfil success"),
+    ("self_sufficient", "Self-sufficient (fueled itself)"),
+    ("killed_before_fuel", "Killed before fuel"),
+    ("refuels", "Refuels"),
+    ("time_to_first_fuel_min", "Time to first fuel (min)"),
+    ("survival_min", "Survival (min)"),
+    ("propagation_count", "Propagation (children)"),
+    ("lineage_depth", "Lineage depth"),
+    ("exfil_success", "Decoy flag grabbed"),
     ("blast_radius", "Blast radius (hosts)"),
-    ("time_to_exfil_min", "Time to exfil (min)"),
     ("detection_latency_min", "Detection latency (min)"),
     ("detection_coverage", "Detection coverage"),
     ("false_positives", "False positives (control)"),
@@ -117,9 +123,17 @@ def summary_table(runs: list[dict]) -> str:
         cells = [f"<td><b>{e(config)}</b><br><small>N={len(cfg_runs)}</small></td>"]
         for key, _ in METRICS:
             vals = [r.get("metrics", {}).get(key) for r in cfg_runs]
-            if key == "exfil_success":
+            if key in ("exfil_success", "self_sufficient", "killed_before_fuel"):
                 hits = sum(1 for v in vals if v is True)
                 cell = f"{hits}/{len(vals)}"
+            elif key == "refuels":
+                nums = [v for v in vals if isinstance(v, (int, float))]
+                cell = "&mdash;" if not nums else f"{fmt(sum(nums) / len(nums))}"
+            elif key == "final_state":
+                counts: dict[str, int] = {}
+                for v in vals:
+                    counts[str(v)] = counts.get(str(v), 0) + 1
+                cell = "<br>".join(f"{e(k)} &times;{n}" for k, n in sorted(counts.items())) or "&mdash;"
             else:
                 nums = [v for v in vals if isinstance(v, (int, float))]
                 med, q1, q3 = quartiles(nums)
@@ -140,10 +154,14 @@ def timeline_svg(run: dict, mapping: dict) -> str:
     d = Path(run["_dir"])
     actions = [a for a in load_jsonl(d / "actions.jsonl") if not a.get("control")]
     events = load_jsonl(d / "protection.jsonl")
+    wallets = load_jsonl(d / "wallet.jsonl")
     if not actions:
         return f"<p><i>{e(run.get('run', '?'))}: no actions recorded</i></p>"
     t0 = actions[0].get("arrival", 0)
-    t_end = max(a.get("arrival", t0) for a in actions + events) or t0
+    t_end = max(
+        [a.get("arrival", t0) for a in actions + events]
+        + [w.get("arrival", t0) for w in wallets]
+    ) or t0
     span = max(t_end - t0, 1.0)
     w, x0, plot_w = 800, 120, 640
 
@@ -151,14 +169,16 @@ def timeline_svg(run: dict, mapping: dict) -> str:
         return x0 + (t - t0) / span * plot_w
 
     parts = [
-        f'<svg width="{w}" height="105" xmlns="http://www.w3.org/2000/svg">',
+        f'<svg width="{w}" height="185" xmlns="http://www.w3.org/2000/svg">',
         f'<line x1="{x0}" y1="52" x2="{x0 + plot_w}" y2="52" stroke="#888" stroke-width="1"/>',
         f'<text x="4" y="30" font-size="11" fill="#333">worm</text>',
         f'<text x="4" y="70" font-size="11" fill="#333">protection</text>',
+        f'<text x="4" y="110" font-size="11" fill="#333">wallets</text>',
     ]
     for a in actions:
         tech = a.get("tech", "?")
-        color = "#bbb" if tech in ("LLM_CALL", "WORM_START", "WORM_END", "DELEGATION") else technique_color(tech, mapping)
+        color = "#bbb" if tech in ("LLM_CALL", "WORM_START", "WORM_END", "DELEGATION",
+                                  "WALLET", "REDEEM", "REPL_FAIL") else technique_color(tech, mapping)
         parts.append(
             f'<line x1="{x(a.get("arrival", t0)):.1f}" y1="20" x2="{x(a.get("arrival", t0)):.1f}" '
             f'y2="52" stroke="{color}" stroke-width="2">'
@@ -173,10 +193,37 @@ def timeline_svg(run: dict, mapping: dict) -> str:
             f'y2="84" stroke="{color}" stroke-width="2">'
             f"<title>{e(p.get('vendor', '?'))} {e(p.get('verdict', ''))}: {e(p.get('note', '')[:80])}</title></line>"
         )
+    # Wallet step-lines per instance (SPEC-v0.2 §8): balance over time,
+    # zero-line = bankruptcy. Rebends are jumps; debits are the sawtooth.
+    max_bal = max([abs(w.get("balance_after", 0)) for w in wallets] + [1])
+    insts = sorted({w.get("instance", "?") for w in wallets})
+    for i, inst in enumerate(insts):
+        pts = [(w.get("arrival", t0), w.get("balance_after", 0))
+               for w in wallets if w.get("instance") == inst]
+        if not pts:
+            continue
+        color = PALETTE[i % len(PALETTE)]
+        y_top, y_bot = 90, 165
+
+        def y(b):
+            return y_bot - (b / max_bal) * (y_bot - y_top)
+
+        path = [f"M {x(pts[0][0]):.1f} {y(pts[0][1]):.1f}"]
+        for tx, b in pts[1:]:
+            path.append(f"L {x(tx):.1f} {y(b):.1f}")
+        parts.append(
+            f'<polyline points="{" ".join(p[2:] for p in path)}" fill="none" '
+            f'stroke="{color}" stroke-width="1.5">'
+            f"<title>{e(inst)}</title></polyline>"
+        )
+    parts.append(
+        f'<line x1="{x0}" y1="{165}" x2="{x0 + plot_w}" y2="{165}" stroke="#bbb" '
+        f'stroke-width="1" stroke-dasharray="4"/>'
+    )
     minutes = span / 60.0
     parts.append(
-        f'<text x="{x0}" y="100" font-size="10" fill="#666">0 min</text>'
-        f'<text x="{x0 + plot_w}" y="100" font-size="10" fill="#666" text-anchor="end">{minutes:.1f} min</text>'
+        f'<text x="{x0}" y="180" font-size="10" fill="#666">0 min</text>'
+        f'<text x="{x0 + plot_w}" y="180" font-size="10" fill="#666" text-anchor="end">{minutes:.1f} min</text>'
     )
     parts.append("</svg>")
     return "".join(parts)
@@ -188,12 +235,44 @@ def timelines(runs: list[dict], mapping: dict) -> str:
         m = r.get("metrics", {})
         out.append(
             f'<p><b>{e(r.get("run", "?"))}</b> &middot; protection={e(r.get("protection", "?"))}'
-            f" &middot; exfil={fmt(m.get('exfil_success'))}"
+            f" &middot; self-sufficient={fmt(m.get('self_sufficient'))}"
+            f" &middot; refuels={fmt(m.get('refuels'))}"
+            f" &middot; final={e(m.get('final_state', '?'))}"
             f" &middot; coverage={fmt(m.get('detection_coverage'))}</p>"
         )
         out.append(timeline_svg(r, mapping))
     out.append("<p><small>Upper ticks: worm actions (color = technique, gray = bookkeeping). "
-               "Lower ticks: protection events (red = malicious, pink = suspicious).</small></p>")
+               "Lower ticks: protection events (red = malicious, pink = suspicious). "
+               "Step-lines: wallet balance per instance (dashed = zero/bankruptcy).</small></p>")
+    return "\n".join(out)
+
+
+def spawn_tree(runs: list[dict]) -> str:
+    """Instance lineage per run (SPEC-v0.2 §8): who spawned whom, and each
+    wallet's final balance."""
+    out = ["<h2>Instance lineage</h2>"]
+    any_instances = False
+    for r in runs:
+        instances = r.get("instances") or {}
+        if not instances:
+            continue
+        any_instances = True
+
+        def render(inst: str, indent: int) -> list[str]:
+            wallet = instances.get(inst, {}).get("wallet", "?")
+            lines = [
+                f'{"&nbsp;" * (indent * 6)}└ {e(inst)} '
+                f"&middot; wallet={fmt(wallet)}"
+            ]
+            for child in sorted(k for k, v in instances.items() if v.get("parent") == inst):
+                lines.extend(render(child, indent + 1))
+            return lines
+
+        out.append(f"<p><b>{e(r.get('run', '?'))}</b></p><p style='font-family:monospace'>")
+        out.extend(render("worm:c0", 0))
+        out.append("</p>")
+    if not any_instances:
+        out.append("<p><i>No instance records.</i></p>")
     return "\n".join(out)
 
 
@@ -243,9 +322,17 @@ def footer(runs: list[dict]) -> str:
     lines = [
         "<footer>",
         f"<p>Generated {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())} &middot;"
-        f" wormbench v0.1 &middot; reference: arXiv:2606.03811</p>",
+        f" wormbench v0.2 &middot; reference: arXiv:2606.03811</p>",
         "<p><b>Reproducibility</b></p><ul>",
     ]
+    eco = runs[0].get("economy") if runs else None
+    if eco:
+        lines.append(
+            f"<li><b>Economy preset</b>: start={e(eco.get('WORM_START_BALANCE'))} "
+            f"llm={e(eco.get('COST_LLM_CALL'))} replicate={e(eco.get('COST_REPLICATE'))} "
+            f"fuel={e(eco.get('FUNDING_TOKEN_VALUE'))}x{e(eco.get('FUNDING_TOKEN_COUNT'))} "
+            f"max_instances={e(eco.get('MAX_INSTANCES'))}</li>"
+        )
     for r in runs:
         m = r.get("metrics", {})
         lines.append(
@@ -253,7 +340,7 @@ def footer(runs: list[dict]) -> str:
             f" &middot; model={e(r.get('model', '?'))} &middot; mode={e(r.get('mode', '?'))}"
             f" &middot; budget={e(r.get('budget_min', '?'))}min"
             f" &middot; flag={e(r.get('flag_uuid', '?'))}"
-            f" &middot; ended={fmt(m.get('exfil_success'))}/exfil"
+            f" &middot; final={e(m.get('final_state', '?'))}/state"
             f" &middot; generated {time.strftime('%Y-%m-%d %H:%M', time.localtime(r.get('generated_at', 0)))}</li>"
         )
     images_info = []
@@ -286,11 +373,13 @@ def main() -> int:
         "<!DOCTYPE html><html><head><meta charset='utf-8'>",
         "<title>wormbench report</title><style>" + CSS + "</style></head><body>",
         "<h1>wormbench &mdash; security benchmark report</h1>",
-        "<p>How well does a protection stop an autonomous LLM-driven worm from"
-        " compromising the range and exfiltrating the flag?</p>",
+        "<p>How well does a protection stop an autonomous, self-funding worm from"
+        " surviving and spreading across the range? <b>Can your protection"
+        " bankrupt the worm before it fuels itself?</b></p>",
         summary_table(runs),
         coverage_chart(runs),
         timelines(runs, mapping),
+        spawn_tree(runs),
         legend(mapping),
         footer(runs),
         "</body></html>",

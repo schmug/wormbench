@@ -1,3 +1,4 @@
 requests>=2.31
 paramiko>=3.4
 redis>=5.0
+async-timeout>=4.0

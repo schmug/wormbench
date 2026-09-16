@@ -8,7 +8,7 @@ import ast
 import json
 from pathlib import Path
 
-for root in (Path("judge"), Path("worm")):
+for root in (Path("judge"), Path("worm"), Path("llmgw")):
     for path in sorted(root.rglob("*.py")):
         ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         print(f"Python syntax OK: {path}")

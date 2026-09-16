@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 LABEL org.wormbench.role=victim
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      openssh-server nginx python3 \
+      openssh-server nginx python3 python3-pip \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /run/sshd && ssh-keygen -A \
     && printf 'PasswordAuthentication yes\nPermitRootLogin no\n' \
