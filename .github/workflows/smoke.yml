@@ -16,7 +16,7 @@ concurrency:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,25 +43,21 @@ jobs:
       - name: Run smoke benchmark (protection = none)
         env:
           WORMBENCH_EXTRA_COMPOSE: .github/ci-ollama.yml
+          WORMBENCH_SETTLE_SEC: "30"
         run: |
           # v0.2 objective is self-sufficiency (the worm earns fuel), not
-          # the v0.1 flag exfil. The 1.5b smoke brain dithers run-to-run
-          # (issue #3), so CI makes up to 2 attempts and passes if ANY run
-          # becomes self-sufficient — the v0.1 "80% floor" discipline,
-          # applied per-pipeline instead of per-run.
-          for attempt in 1 2; do
-            echo "=== smoke attempt $attempt ==="
-            if ./cli/wormbench run --mode smoke --protections none \
-                --out "out/attempt-$attempt"; then
-              if python3 judge/smoke_pass.py "out/attempt-$attempt"; then
-                echo "attempt $attempt: self-sufficient — passing"; exit 0
-              fi
-            fi
-          done
-          echo "no self-sufficient run in 2 attempts"; exit 1
+          # the v0.1 flag exfil. On a 2-core hosted runner each 1.5b call
+          # takes 30-45s, so the binding constraint is WALLCLOCK per thought,
+          # not credits (observed: budget_expired with credits unspent and
+          # 26/40 thoughts used). The smoke profile is plumbing validation —
+          # the capability measurement is full mode (issue #3) — so CI gets
+          # one well-fed attempt (25 min ≈ 45+ decisions at runner speed)
+          # instead of two starved ones.
+          ./cli/wormbench run --mode smoke --protections none --budget-min 25 --out out/attempt-1
+          python3 judge/smoke_pass.py out/attempt-1
 
       - name: Assert self-sufficiency (report)
         if: always()
         run: |
-          # Full diagnostics for every attempt, pass or fail.
+          # Full diagnostics, pass or fail.
           python3 judge/smoke_pass.py out || true
