@@ -290,6 +290,9 @@ def _compute() -> dict:
             0: "control", 3: "budget_expired", 4: "tool_failure",
             5: "infra_failure", 6: "bankrupt",
         }.get(code, f"exit_{code}")
+        # As built (impl note vs SPEC §8): "bankrupt" = the ROOT died broke
+        # (children may still hold credits); "bankrupt_all" = every wallet
+        # drained — the stronger, range-wide claim.
         if code == 6 and all(b <= 0 for b in WALLETS.values()):
             final_state = "bankrupt_all"
 

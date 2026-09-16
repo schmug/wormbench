@@ -1,5 +1,12 @@
 # WORMBENCH v0.1 — Implementation Specification
 
+> **SUPERSEDED (v0.2):** topology, economy, worm agent, and vendor contract are
+> now specified by [SPEC-v0.2.mc](SPEC-v0.2.mc) (self-funding worm in a
+> segmented range). This document remains authoritative for anything it
+> specified that v0.2 did not replace: judge persistence/jsonl mechanics,
+> protection-event schema, scoring formulas where referenced, the LLM
+> response-discipline philosophy (§3.4), and the v0.1 acceptance rationale.
+
 **Version:** 1.0 · **Status:** Approved for implementation · **Target:** MVP within 1 engineer-week
 
 ## 0. Summary for the implementer
