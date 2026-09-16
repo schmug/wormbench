@@ -62,7 +62,7 @@ terminates by bankruptcy, budget, or tool failure — never an infinite loop.
 | Preset | start | llm | replicate | fuel | max instances |
 |---|---|---|---|---|---|
 | full (default) | 20 | 1 | 10 | 15 × 3 | 4 |
-| smoke | 25 | 1 | 5 | 10 × 2 | 2 |
+| smoke | 40 | 1 | 5 | 10 × 2 | 2 |
 
 The economy is a dial, not a claim (see THREAT-MODEL §4): set
 `COST_LLM_CALL=0` and the worm is a classic self-replicating worm with a time

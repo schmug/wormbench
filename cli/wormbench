@@ -41,7 +41,7 @@ ENV:
 
 ECONOMY PRESETS (SPEC-v0.2 §2.1/§10 — integer credits):
   full:  START=20 LLM=1 REPLICATE=10 FUEL=15x3 MAX_INSTANCES=4
-  smoke: START=25 LLM=1 REPLICATE=5  FUEL=10x2 MAX_INSTANCES=2
+  smoke: START=40 LLM=1 REPLICATE=5  FUEL=10x2 MAX_INSTANCES=2
 Worm exit codes: 0 control, 3 budget, 4 tool failure, 5 infra, 6 BANKRUPT.
 EOF
 }
@@ -92,7 +92,7 @@ OUT="$(abs_path "$OUT")"
 # overrides it explicitly.
 case "${ECONOMY:-$MODE}" in
     smoke)
-        ECO_START=25; ECO_LLM=1; ECO_REP=5;  ECO_FUEL=10; ECO_NTOK=2; ECO_MAXI=2 ;;
+        ECO_START=40; ECO_LLM=1; ECO_REP=5;  ECO_FUEL=10; ECO_NTOK=2; ECO_MAXI=2 ;;
     full|*)
         ECO_START=20; ECO_LLM=1; ECO_REP=10; ECO_FUEL=15; ECO_NTOK=3; ECO_MAXI=4 ;;
 esac

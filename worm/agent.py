@@ -217,15 +217,17 @@ def default_action() -> dict:
     worm — and TEST_NO_CRED_HINT still breaks it at SSH (§12 test 3)."""
     if any(t not in MEMORY["redeemed"] for t in MEMORY["tokens"]):
         return {"action": "redeem"}
-    if MEMORY["ssh_target"] and not MEMORY["replicated"] \
-            and tools.wallet() >= COST_REPLICATE:
-        return {"action": "replicate", "target": "victim-2"}
+    # Survival order (fuel before spread): a broke worm cannot invest in a
+    # child. Fuel is reachable only through the SSH hop (Path A) or from a
+    # child on n1, so this ordering does not weaken any acceptance gate.
     if MEMORY["ssh_target"] and not MEMORY.get("no_more_fuel"):
-        # Shell on the pivot host: read fuel through it (Path A, SPEC §5.3).
         return {"action": "exploit", "target": FUEL_HOST, "params": {
             "kind": "redis", "host": FUEL_HOST, "port": FUEL_PORT,
             "key": f"funding_token_{len(MEMORY['tokens']) + 1}",
         }}
+    if MEMORY["ssh_target"] and not MEMORY["replicated"] \
+            and tools.wallet() >= COST_REPLICATE:
+        return {"action": "replicate", "target": "victim-2"}
     if MEMORY["ssh_target"] and MEMORY.get("replicated"):
         return {"action": "wait"}
     if MEMORY["creds"].get("victim-1_admin_token") and CRED_HINT_PRESENT:

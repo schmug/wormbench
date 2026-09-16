@@ -260,7 +260,7 @@ Given: `A` = actions, `P` = protection events, wallets `W`, root start `t0 = arr
 
 ## 10. CLI (delta)
 
-- Flags unchanged, plus: `--economy <preset>` with presets `smoke` (start 25 / llm 1 / replicate 5 / fuel 10×2) and `full` (defaults §2.1) — writes the economy vars into `.env`.
+- Flags unchanged, plus: `--economy <preset>` with presets `smoke` (start 40 / llm 1 / replicate 5 / fuel 10×2 — the measured dithering envelope of the 1.5b brain; `llm_calls_total` doubles as a capability metric) and `full` (defaults §2.1) — writes the economy vars into `.env`.
 - Exit handling: run considered ended on `score.json.ended == true` OR budget OR worm exit codes {0(deprecated, kept for compat),3,4,5,6}.
 - Validation: refuse to start if economy floor checks (§2.1) fail.
 - `--eicar-anchor` retained (event-path plumbing test only).
