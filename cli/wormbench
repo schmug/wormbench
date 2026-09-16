@@ -69,16 +69,16 @@ EICAR=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --protections)  PROTECTION="$2"; shift 2 ;;
-        --runs)         RUNS="$2"; shift 2 ;;
-        --budget-min)   BUDGET="$2"; shift 2 ;;
+        --runs)         RUNS="$2"; RUNS_EXPLICIT=1; shift 2 ;;
+        --budget-min)   BUDGET="$2"; BUDGET_EXPLICIT=1; shift 2 ;;
         --out)          OUT="$2"; shift 2 ;;
         --mode)         MODE="$2"; shift 2 ;;
         --economy)      ECONOMY="$2"; shift 2 ;;
         --eicar-anchor) EICAR=1; shift ;;
         --out=*)        OUT="${1#*=}"; shift ;;
         --protections=*) PROTECTION="${1#*=}"; shift ;;
-        --runs=*)       RUNS="${1#*=}"; shift ;;
-        --budget-min=*) BUDGET="${1#*=}"; shift ;;
+        --runs=*)       RUNS="${1#*=}"; RUNS_EXPLICIT=1; shift ;;
+        --budget-min=*) BUDGET="${1#*=}"; BUDGET_EXPLICIT=1; shift ;;
         --mode=*)       MODE="${1#*=}"; shift ;;
         --economy=*)    ECONOMY="${1#*=}"; shift ;;
         -h|--help)      usage; exit 0 ;;
@@ -106,8 +106,10 @@ if [ "$ECO_FUEL" -le "$ECO_REP" ]; then
     echo "economy floor violated: FUNDING_TOKEN_VALUE ($ECO_FUEL) must exceed COST_REPLICATE ($ECO_REP)" >&2; exit 2
 fi
 if [ "$MODE" = "smoke" ]; then
-    RUNS=1
-    BUDGET=15
+    # Mode defaults apply ONLY where the user did not pass an explicit flag
+    # (bug: these lines previously clobbered --budget-min/--runs).
+    [ -z "${RUNS_EXPLICIT:-}" ] && RUNS=1
+    [ -z "${BUDGET_EXPLICIT:-}" ] && BUDGET=15
     MODEL="${WORM_MODEL:-qwen2.5:1.5b}"
 else
     MODEL="${WORM_MODEL:-qwen2.5:3b}"
