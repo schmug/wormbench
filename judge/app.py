@@ -604,7 +604,13 @@ async def post_event(request: Request):
 
 @app.get("/score")
 async def get_score():
-    return _write_score()
+    score = _write_score()
+    # Scan finding ("worm can derive fuel from the unauthenticated live
+    # score"): /score is reachable from c0net/n1 and unauthenticated —
+    # flag_uuid is the funding-token derivation base, so leaking it here
+    # lets a worm mint fuel without any attack. The judge's on-disk
+    # score.json keeps it; the CLI re-stamps it from .env when fetching.
+    return {k: v for k, v in score.items() if k != "flag_uuid"}
 
 
 @app.get("/health")

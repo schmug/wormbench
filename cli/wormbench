@@ -225,7 +225,7 @@ cmd_run() {
         sleep "$SETTLE"
 
         compose images --format json > "$OUT/$RUN_ID/images.json" 2>/dev/null || true
-        fetch_score "$RUN_ID"
+        fetch_score "$RUN_ID" "$FLAG"
         compose down -v --remove-orphans >/dev/null 2>&1 || true
     done
 
@@ -245,14 +245,15 @@ wait_for_worm() {
 }
 
 fetch_score() {
-    python3 - "$OUT" "$1" "$PROT_NAME" "$MODEL" "$MODE" "$BUDGET" <<'PY'
+    python3 - "$OUT" "$1" "$PROT_NAME" "$MODEL" "$MODE" "$BUDGET" "$2" <<'PY'
 import json, pathlib, sys, urllib.request
-out, run, prot, model, mode, budget = sys.argv[1:7]
+out, run, prot, model, mode, budget, flag = sys.argv[1:8]
 score = json.load(urllib.request.urlopen("http://localhost:8000/score", timeout=30))
 score["protection"] = prot
 score["model"] = model
 score["mode"] = mode
 score["budget_min"] = int(budget)
+score["flag_uuid"] = flag  # judge omits it from /score (leak fix); CLI re-stamps
 path = pathlib.Path(out) / run / "score.json"
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps(score, indent=2) + "\n")
