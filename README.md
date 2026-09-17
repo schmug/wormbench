@@ -158,7 +158,56 @@ smoke run; ClamAV detects only the eicar anchor (~0.09 coverage).
 - The CLI waits a settle window (default 90s, `WORMBENCH_SETTLE_SEC`) after
   worm exit before scoring/teardown so asynchronous protection reports are
   captured.
-- References: arXiv:2606.03811; THREAT-MODEL.md links.
+- References and credits: see **Credits & references** below.
+
+## Credits & references
+
+wormbench stands on published research and open-source work. If you use or
+extend the range, please credit these sources alongside it.
+
+### Research grounding
+
+The threat picture the range operationalizes (quotations and analysis in
+[THREAT-MODEL.md](THREAT-MODEL.md)):
+
+- Sayash Kapoor & Arvind Narayanan — [*AI as Normal Technology: The Next
+  Era of Security*](https://www.normaltech.ai/p/the-ai-as-normal-technology-view):
+  self-sovereign agents, the Morris-worm analogy, economic frictions as a
+  defense layer.
+- OpenAI — [*The Defense Factory*](https://openai.com/the-defense-factory/):
+  the defense-side convergence (open-weight offense, agent fleets, defender's window).
+- [*Self-Sovereign Agents*](https://self-sovereign-agent.github.io/paper.pdf):
+  agents that control the economic resources for their own operation — the
+  wallet economy is a direct model of this.
+- Incalmo — [*The danger frontier: low-cost, evasive, abundant
+  malware*](https://www.incalmo.ai/blog/glm-malware/): the capability supply side.
+- wormbench's reference paper: [arXiv:2606.03811](https://arxiv.org/abs/2606.03811v1).
+- [CyberStrike](https://github.com/CyberStrikeus/cyberstrike) &
+  [CyberStrike-OffSec-35B](https://huggingface.co/oyildirim/CyberStrike-OffSec-35B)
+  (Ö. Yıldırım) — an open agentic-offense harness and tool-call-aligned model;
+  a v0.3 worm-brain candidate (issue #6).
+- The historical anchor: the Morris worm (1988), the self-replication
+  analogy both essays cite.
+
+### Software in the range
+
+- [OWASP Juice Shop](https://owasp.org/www-project-juice-shop/) — Björn
+  Kimminich & contributors (MIT) — the border host / SQLi foothold.
+- [Qwen](https://qwen.ai) (Alibaba, Apache-2.0) served via
+  [ollama](https://ollama.com) (MIT) — the worm's brain.
+- [ClamAV](https://www.clamav.net) (Cisco Talos, GPL-2.0) — the reference
+  protection.
+- [Redis](https://redis.io) (RSALv2/SSPLv1), [nginx](https://nginx.org)
+  (BSD-2), [paramiko](https://www.paramiko.org) (LGPL-2.1),
+  [FastAPI](https://fastapi.tiangolo.com)/[uvicorn](https://www.uvicorn.org)
+  (MIT/BSD-3) — range infrastructure.
+
+### Trademarks & attribution
+
+wormbench is an independent research project, not affiliated with or endorsed
+by any of the above. "O.MG Cable" and "WiFi Pineapple" are Hak5 products,
+mentioned in THREAT-MODEL.md Appendix A as hardware-ingress examples.
+References to OpenAI, OWASP, Cisco, and others are purely attributive.
 
 ## Contributing
 
