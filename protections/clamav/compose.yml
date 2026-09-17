@@ -3,16 +3,18 @@
 # Scans the worm's staged artifact surface (shared-artifacts volume) every 30s
 # and reports every "FOUND" line to the judge as a malicious ProtectionEvent.
 #
-# - wormnet: sees all attack traffic (internal).
+# - c0net + n1 (v0.2 contract): sees all attack traffic on both sides of the
+#   network boundary (both internal).
 # - pullnet: freshclam DB download at start only (allowed by constraint 1).
-# - shared-artifacts mounted :ro (v0.1 contract).
+# - shared-artifacts mounted :ro (v0.1 contract, unchanged).
 services:
   clamav:
     image: clamav/clamav:1.4
     # clamav publishes amd64-only images; run under emulation on arm64 hosts.
     platform: linux/amd64
     networks:
-      - wormnet
+      - c0net
+      - n1
       - pullnet
     volumes:
       - shared-artifacts:/scan:ro

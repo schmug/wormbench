@@ -3,6 +3,9 @@
 Keep changes focused and explain the problem they solve. For a new feature or
 benchmark behavior change, open an issue describing the proposal first.
 
+wormbench is a **research and authorized-testing** tool: contributions are
+assumed to serve that purpose (see the notice in README.md).
+
 ## Local checks
 
 Install Python 3.12, Bash, Git, and Docker with the Compose v2 plugin. From the
