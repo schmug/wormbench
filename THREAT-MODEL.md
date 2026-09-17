@@ -3,8 +3,9 @@
 **Status:** accompanies SPEC-v0.2.mc · **Primary references:** Kapoor & Narayanan,
 [*AI as Normal Technology: The Next Era of Security*](https://www.normaltech.ai/p/the-ai-as-normal-technology-view)
 (AINT); OpenAI, [*The Defense Factory*](https://openai.com/the-defense-factory/)
-· **Supporting:** self-sovereign agents (self-sovereign-agent.github.io),
-arXiv:2606.03811 (wormbench's reference paper), CyberStrike
+· **Supporting:** Qu, Zhao, Zhang & Song, *Self-Sovereign Agent*
+(self-sovereign-agent.github.io); Guan et al., *AI Agents Enable Adaptive
+Computer Worms* (arXiv:2606.03811, wormbench's reference paper); CyberStrike
 ([github.com/CyberStrikeus/cyberstrike](https://github.com/CyberStrikeus/cyberstrike)
 + the CyberStrike-OffSec-35B model), and Incalmo's
 [*The danger frontier: low-cost, evasive, abundant malware*](https://www.incalmo.ai/blog/glm-malware/)

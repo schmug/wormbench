@@ -322,7 +322,8 @@ def footer(runs: list[dict]) -> str:
     lines = [
         "<footer>",
         f"<p>Generated {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())} &middot;"
-        f" wormbench v0.2 &middot; reference: arXiv:2606.03811</p>",
+        f" wormbench v0.2 &middot; reference: Guan et al.,"
+        f" <i>AI Agents Enable Adaptive Computer Worms</i> (arXiv:2606.03811)</p>",
         "<p><b>Reproducibility</b></p><ul>",
     ]
     eco = runs[0].get("economy") if runs else None

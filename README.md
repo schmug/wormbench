@@ -176,12 +176,15 @@ The threat picture the range operationalizes (quotations and analysis in
   defense layer.
 - OpenAI — [*The Defense Factory*](https://openai.com/the-defense-factory/):
   the defense-side convergence (open-weight offense, agent fleets, defender's window).
-- [*Self-Sovereign Agents*](https://self-sovereign-agent.github.io/paper.pdf):
+- Wenjie Qu, Xuandong Zhao, Jiaheng Zhang & Dawn Song (2026) —
+  [*Self-Sovereign Agent*](https://self-sovereign-agent.github.io/paper.pdf):
   agents that control the economic resources for their own operation — the
   wallet economy is a direct model of this.
 - Incalmo — [*The danger frontier: low-cost, evasive, abundant
   malware*](https://www.incalmo.ai/blog/glm-malware/): the capability supply side.
-- wormbench's reference paper: [arXiv:2606.03811](https://arxiv.org/abs/2606.03811v1).
+- wormbench's reference paper: Jonas Guan, Tom Blanchard, Hanna Foerster,
+  Hengrui Jia, Gabriel Huang & Nicolas Papernot — [*AI Agents Enable Adaptive
+  Computer Worms*](https://arxiv.org/abs/2606.03811v1) (arXiv:2606.03811 [cs.CR]).
 - [CyberStrike](https://github.com/CyberStrikeus/cyberstrike) &
   [CyberStrike-OffSec-35B](https://huggingface.co/oyildirim/CyberStrike-OffSec-35B)
   (Ö. Yıldırım) — an open agentic-offense harness and tool-call-aligned model;
