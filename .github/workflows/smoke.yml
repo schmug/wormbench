@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
 
       - name: Cache pre-baked ollama model
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           key: ollama-model-qwen2.5-1.5b
           path: .ollama-ci
