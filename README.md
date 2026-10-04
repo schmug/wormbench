@@ -43,6 +43,8 @@ Full design: [SPEC-v0.2.mc](SPEC-v0.2.mc).
 Then open `out/report.html`. Each run writes `out/run-NNN/` (actions.jsonl,
 protection.jsonl, wallet.jsonl, score.json); everything is disposable —
 `./cli/wormbench down && docker volume ls | grep wormbench` shows zero leftovers.
+While the run is up, watch it live at **http://localhost:8000/** — see
+[Live range visualization](#live-range-visualization) below.
 
 Useful options: `--mode smoke` (1 run, 15 min, qwen2.5:1.5b, small
 economy), `--runs N` (N ≥ 2 enables the control/false-positive phase),
@@ -85,6 +87,35 @@ always state the preset used.
   or via a shell on victim-2).
 - All thinking is metered: worm → llmgw → (wallet check) → ollama.
 
+## Live range visualization
+
+While a run is up, the judge also serves a read-only demo page: open
+**http://localhost:8000/** (the CLI prints the URL at run start). It polls
+`GET /state` every 3 s and draws, in real time:
+
+- the **topology map** — c0net/n1 boundary, the dual-homed border host and
+  its SSH pivot (`2222 → victim-2:22`), victim-2, cmoney (fuel), llmgw,
+  ollama, judge, and the protection container (vendor inferred from its
+  reports);
+- **worm instances** as markers with parent→child spawn edges (the lineage
+  tree), colored per instance;
+- **host state** chips — `S` scanning, `C` compromised (cred), `P`
+  persistent (beacon-gated, the same gates the judge computes for
+  `blast_radius`), `F` fueled;
+- **wallet step-lines** per instance (credits over time; the dashed line is
+  zero = bankruptcy) — the "will it make it to the next refuel" tension is
+  the demo;
+- a rolling **event stream** of worm actions + protection detections
+  (newest first; the timeline logic mirrors `judge/report.py`).
+
+The page (`judge/ui.html`) is dependency-free vanilla JS/CSS/SVG — the
+`report.html` precedent: no external JS/CSS, no build step. `/state` is
+reachable from c0net, so it is scrubbed judge-side: flag values (the
+fuel-token derivation base) and funding tokens never leave the ledger, and
+the page is read-only — it cannot steer the range. The UI is a live view
+only: the CLI tears the range down after scoring; finished runs are
+visualized by `out/report.html` (`./cli/wormbench score`).
+
 ## Adding a protection
 
 Write a compose partial and point `--protections` at it. The full vendor
@@ -114,7 +145,8 @@ computes:
 | Path | What |
 |---|---|
 | `cli/wormbench` | run/score/down driver + economy presets |
-| `judge/` | FastAPI treasury + event sink + scorer + HTML report |
+| `judge/` | FastAPI treasury + event sink + scorer + HTML report + live range UI |
+| `judge/ui.html` | live range visualization page (polls judge `/state`) |
 | `llmgw/` | LLM metering gateway (wallet debit → ollama; 402 on empty) |
 | `worm/` | goal-loop agent, tools, full-instance payload + vendored wheels |
 | `victims/victim-1/` | border host (juice-shop + SSH pivot) |

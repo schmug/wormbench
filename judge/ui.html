@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wormbench — live range</title>
+<style>
+body { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+       margin: 1.5rem auto; max-width: 960px; color: #222; }
+h1 { font-size: 1.5rem; margin-bottom: .2rem; }
+h2 { font-size: 1.1rem; margin-top: 1.8rem; }
+#status { font-size: .85rem; color: #444; margin: .4rem 0; line-height: 1.5; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 10px;
+         font-size: .75rem; font-weight: 600; margin-right: 4px;
+         background: #eee; color: #333; }
+.badge.ok { background: #e8f5e9; color: #1b5e20; }
+.badge.warn { background: #fff3e0; color: #79520e; }
+.badge.bad { background: #fdecea; color: #8c1c13; }
+.badge.ended { background: #ede7f6; color: #3f2d78; }
+svg text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
+.host-label { font-size: 11px; fill: #333; }
+.zone-label { font-size: 10px; fill: #555; }
+.edge-label { font-size: 9px; fill: #777; }
+.inst-label { font-size: 10px; }
+.chip-letter { font-size: 8px; font-weight: 700; }
+#stream { font-size: .8rem; }
+.srow { display: flex; gap: 8px; align-items: baseline; padding: 3px 4px;
+        border-left: 3px solid #ddd; margin-bottom: 2px; background: #fafafa; }
+.srow.prot-malicious { border-left-color: #e41a1c; }
+.srow.prot-suspicious { border-left-color: #ff9896; }
+.srow.prot-benign { border-left-color: #ccc; }
+.srow.control { opacity: .55; }
+.stime { font-family: ui-monospace, Menlo, monospace; font-size: .72rem;
+         color: #666; white-space: nowrap; min-width: 52px; }
+.stag { font-family: ui-monospace, Menlo, monospace; font-size: .72rem;
+        white-space: nowrap; padding: 0 4px; border-radius: 3px; }
+.swho { color: #555; font-size: .72rem; white-space: nowrap; }
+.sdet { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+footer { margin-top: 2.5rem; font-size: .75rem; color: #666;
+         border-top: 1px solid #ccc; padding-top: .8rem; }
+.wlegend { font-size: .78rem; color: #444; }
+.wlegend .sw { display: inline-block; width: 10px; height: 10px;
+               margin-right: 4px; border-radius: 2px; }
+.err { color: #8c1c13; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>wormbench — live range</h1>
+<div id="status">connecting…</div>
+<h2>Range map</h2>
+<div id="map"></div>
+<p class="wlegend" id="map-legend"></p>
+<h2>Wallets — credits over time (the “will it make it to the next refuel” line)</h2>
+<div id="wallets"></div>
+<p class="wlegend" id="wallet-legend"></p>
+<h2>Event stream</h2>
+<div id="stream"></div>
+<footer>wormbench live UI (issue #2) — read-only view of the judge’s
+<code>/state</code>, polled every 3&nbsp;s. No external JS/CSS; nothing here
+can steer the range. Secrets (flag/fuel tokens) are scrubbed judge-side.</footer>
+<script>
+"use strict";
+
+/* ---- constants -------------------------------------------------------- */
+
+var PALETTE = ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00",
+               "#a65628", "#f781bf", "#66c2a5", "#b2d838", "#8c6d31"];
+var POLL_MS = 3000;
+
+/* Map skeleton: zone rectangles + host rectangles (SVG coords).
+ * victim-1 (the border) straddles the c0net/n1 gap — the only container
+ * attached to both (docker-compose hard constraint 2). */
+var ZONES = {
+  c0net:    [20, 30, 330, 290, "c0net (internal)"],
+  n1:       [500, 30, 390, 290, "n1 (target)"],
+  llmnet:   [20, 340, 330, 100, "llmnet"],
+  judgenet: [500, 340, 390, 100, "judgenet (host-published port)"]
+};
+var HOST_RECT = {
+  "c0":       [60, 90, 130, 70, "c0 — worm origin"],
+  "victim-1": [340, 95, 160, 90, "victim-1 — border (dual-homed)"],
+  "victim-2": [560, 90, 130, 70, "victim-2 — ssh / replication"],
+  "cmoney":   [760, 200, 120, 70, "cmoney — funding tokens (redis)"]
+};
+var GATE_CHIPS = [
+  ["S", "scanning", "#377eb8"], ["C", "compromised (cred)", "#ff7f00"],
+  ["P", "persistent (beacon)", "#e41a1c"], ["F", "fueled", "#4daf4a"]
+];
+
+/* ---- helpers ---------------------------------------------------------- */
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>\"]/g, function (c) {
+    return {"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;"}[c];
+  });
+}
+
+function instColor(instances, id) {
+  var idx = -1;
+  for (var i = 0; i < instances.length; i++) {
+    if (instances[i].id === id) { idx = i; break; }
+  }
+  if (idx < 0) { idx = instances.length; }
+  return PALETTE[idx % PALETTE.length];
+}
+
+function fmtClock(t0, arrival) {
+  if (t0 == null || arrival == null) { return "—"; }
+  var s = Math.max(0, Math.round(arrival - t0));
+  var m = Math.floor(s / 60);
+  return m + ":" + ("0" + (s % 60)).slice(-2);
+}
+
+function fmtMin(v) {
+  return v == null ? "—" : (Math.round(v * 100) / 100);
+}
+
+function fmtBal(v) {
+  return v == null ? "—" : String(v);
+}
+
+/* ---- header ----------------------------------------------------------- */
+
+function renderStatus(s) {
+  var el = document.getElementById("status");
+  if (!s) { return; }
+  var m = s.metrics || {};
+  var h = "";
+  h += "<span class=\"badge\">run " + esc(s.run) + "</span>";
+  h += "<span class=\"badge " + (s.ended ? "ended" : "ok") + "\">" +
+       (s.ended ? "ended: " + esc(s.final_state) : "running") +
+       (s.elapsed_min != null ? " · " + fmtMin(s.elapsed_min) + " min" : "") +
+       "</span>";
+  h += "<span class=\"badge " +
+       (m.self_sufficient ? "ok" : (s.ended ? "bad" : "warn")) + "\">" +
+       "self-sufficient: " + (m.self_sufficient ? "✓" : "✗") + " · refuels " +
+       esc(m.refuels == null ? 0 : m.refuels) + "</span>";
+  h += "<span class=\"badge " + (m.blast_radius ? "bad" : "") + "\">" +
+       "blast radius: " + esc(m.blast_radius == null ? 0 : m.blast_radius) +
+       " · lineage " + esc(m.lineage_depth == null ? 0 : m.lineage_depth) +
+       "</span>";
+  if (m.detection_coverage != null) {
+    h += "<span class=\"badge warn\">detection " +
+         Math.round(m.detection_coverage * 100) + "%</span>";
+  }
+  var vendors = s.protection_vendors || [];
+  h += "<span class=\"badge\">protection: " +
+       (vendors.length ? esc(vendors.join(", ")) : "none") + "</span>";
+  h += "<span class=\"badge\">model " + esc((s.economy || {}).WORM_MODEL) +
+       "</span>";
+  if (s.ended) {
+    h += "<span class=\"badge ended\">range torn down when the CLI finishes —" +
+         " UI goes stale (live view only)</span>";
+  }
+  el.innerHTML = h;
+}
+
+/* ---- map -------------------------------------------------------------- */
+
+function hostFill(hs) {
+  if (!hs) { return "#f7f7f7"; }
+  if (hs.persistent) { return "#fdecea"; }
+  if (hs.compromised) { return "#fff3e0"; }
+  if (hs.scanning) { return "#e8f1fd"; }
+  return "#f7f7f7";
+}
+
+function hostStroke(hs) {
+  if (!hs) { return "#999"; }
+  if (hs.persistent) { return "#e41a1c"; }
+  if (hs.compromised) { return "#ff7f00"; }
+  if (hs.scanning) { return "#377eb8"; }
+  return "#999";
+}
+
+/* Instance markers: anchored under their resident host, in spawn order.
+ * Parent→child spawn edges connect marker centers (the lineage tree). */
+function renderMap(s) {
+  var el = document.getElementById("map");
+  var parts = [];
+  var W = 900, H = 470;
+  parts.push("<svg width=\"100%\" viewBox=\"0 0 " + W + " " + H +
+             "\" xmlns=\"http://www.w3.org/2000/svg\" role=\"img\">");
+  var z, r;
+  for (var zn in ZONES) {
+    z = ZONES[zn]; r = z;
+    parts.push("<rect x=\"" + r[0] + "\" y=\"" + r[1] + "\" width=\"" + r[2] +
+               "\" height=\"" + r[3] + "\" fill=\"#fcfcfc\" stroke=\"#bbb\"/>");
+    parts.push("<text class=\"zone-label\" x=\"" + (r[0] + 8) + "\" y=\"" +
+               (r[1] + 16) + "\">" + esc(r[4]) + "</text>");
+  }
+  parts.push("<text class=\"zone-label\" x=\"425\" y=\"52\" text-anchor=\"middle\">" +
+             "⇄ only the border bridges</text>");
+
+  /* static edges (drawn under the host rectangles) */
+  parts.push("<path d=\"M 125 160 L 250 240\" stroke=\"#888\" fill=\"none\"/>");
+  parts.push("<text class=\"edge-label\" x=\"150\" y=\"205\">thinking (metered)</text>");
+  parts.push("<path d=\"M 240 300 L 130 380\" stroke=\"#888\" fill=\"none\"/>");
+  parts.push("<path d=\"M 340 270 L 500 270\" stroke=\"#888\" stroke-dasharray=\"3 3\" fill=\"none\"/>");
+  parts.push("<text class=\"edge-label\" x=\"392\" y=\"262\">llmgw also on n1</text>");
+  parts.push("<path d=\"M 190 135 L 340 140\" stroke=\"#888\" fill=\"none\"/>");
+  parts.push("<path d=\"M 500 140 L 560 125\" stroke=\"#888\" fill=\"none\"/>");
+  parts.push("<text class=\"edge-label\" x=\"503\" y=\"118\">2222 → 22</text>");
+  parts.push("<path d=\"M 690 125 L 760 225\" stroke=\"#888\" fill=\"none\"/>");
+  parts.push("<text class=\"edge-label\" x=\"700\" y=\"170\">6379</text>");
+  /* cmoney is NOT forwarded by the border: fuel is reachable only from n1 */
+  parts.push("<path d=\"M 480 185 L 480 240 L 760 240\" stroke=\"#aaa\" " +
+             "stroke-dasharray=\"4 3\" fill=\"none\"/>");
+  parts.push("<text x=\"600\" y=\"234\" font-size=\"11\" fill=\"#e41a1c\">✕</text>");
+  parts.push("<text class=\"edge-label\" x=\"600\" y=\"247\">not forwarded</text>");
+  /* judge (c0net + n1) and the protection slot (c0net + n1) */
+  parts.push("<path d=\"M 750 360 L 500 320\" stroke=\"#bbb\" stroke-dasharray=\"3 3\" fill=\"none\"/>");
+  parts.push("<path d=\"M 755 370 L 350 320\" stroke=\"#bbb\" stroke-dasharray=\"3 3\" fill=\"none\"/>");
+  parts.push("<path d=\"M 430 355 L 350 320\" stroke=\"#bbb\" stroke-dasharray=\"3 3\" fill=\"none\"/>");
+  parts.push("<path d=\"M 470 355 L 520 320\" stroke=\"#bbb\" stroke-dasharray=\"3 3\" fill=\"none\"/>");
+
+  /* host rectangles + gate chips */
+  var hosts = s.hosts || {};
+  var order = Object.keys(HOST_RECT).concat(
+    Object.keys(hosts).filter(function (h) { return !(h in HOST_RECT); }));
+  for (var hi = 0; hi < order.length; hi++) {
+    var hname = order[hi];
+    var hr = HOST_RECT[hname] || null;
+    var hs = hosts[hname] || null;
+    var x, y, w, h2, cx;
+    if (hr) {
+      x = hr[0]; y = hr[1]; w = hr[2]; h2 = hr[3];
+    } else {
+      /* unexpected targets: park them along the bottom of n1 */
+      x = 500 + (hi % 5) * 78; y = 250; w = 72; h2 = 40;
+    }
+    parts.push("<rect x=\"" + x + "\" y=\"" + y + "\" width=\"" + w +
+               "\" height=\"" + h2 + "\" rx=\"4\" fill=\"" + hostFill(hs) +
+               "\" stroke=\"" + hostStroke(hs) + "\" stroke-width=\"1.5\"/>");
+    cx = x + w / 2;
+    parts.push("<text class=\"host-label\" x=\"" + (x + 6) + "\" y=\"" +
+               (y + 16) + "\">" + esc(hr ? hr[4] : hname + " (seen as target)") +
+               "</text>");
+    if (hs) {
+      var tip = "actions=" + hs.actions +
+                (hs.last_seen ? " · last " + fmtClock(s.t0, hs.last_seen) : "");
+      for (var gi = 0; gi < GATE_CHIPS.length; gi++) {
+        var g = GATE_CHIPS[gi];
+        var active = !!hs[g[1]];
+        parts.push("<rect x=\"" + (x + 8 + gi * 22) + "\" y=\"" + (y + h2 - 22) +
+                   "\" width=\"14\" height=\"14\" rx=\"3\" fill=\"" +
+                   (active ? g[2] : "#eee") + "\" stroke=\"#999\" stroke-width=\".5\">" +
+                   "<title>" + g[1] + (active ? " ✓" : "") + " · " + tip + "</title></rect>");
+        parts.push("<text class=\"chip-letter\" x=\"" + (x + 11 + gi * 22) +
+                   "\" y=\"" + (y + h2 - 11) + "\" text-anchor=\"middle\" fill=\"" +
+                   (active ? "#fff" : "#888") + "\">" + g[0] + "</text>");
+      }
+    }
+    /* instance markers under the host */
+    var mine = (s.instances || []).filter(function (inst) {
+      return inst.host === hname;
+    });
+    for (var mi = 0; mi < mine.length; mi++) {
+      var inst = mine[mi];
+      var mx = cx, my = y + h2 + 18 + mi * 22;
+      var col = instColor(s.instances, inst.id);
+      var dead = !inst.alive;
+      var label = esc(inst.id);
+      parts.push("<circle cx=\"" + mx + "\" cy=\"" + my + "\" r=\"8\" fill=\"" +
+                 (dead ? "#fff" : col) + "\" stroke=\"" + col +
+                 "\" stroke-width=\"2\"><title>" +
+                 esc(label + " · wallet " + fmtBal(inst.wallet) +
+                     (dead ? " · exited code " + inst.end_code : " · alive") +
+                     (inst.last_seen ? " · last " + fmtClock(s.t0, inst.last_seen) : "")) +
+                 "</title></circle>");
+      if (dead) {
+        parts.push("<path d=\"M " + (mx - 3) + " " + (my - 3) + " L " + (mx + 3) +
+                   " " + (my + 3) + " M " + (mx + 3) + " " + (my - 3) + " L " +
+                   (mx - 3) + " " + (my + 3) + "\" stroke=\"" + col +
+                   "\" stroke-width=\"1.5\"/>");
+      }
+      parts.push("<text class=\"inst-label\" x=\"" + (mx + 12) + "\" y=\"" +
+                 (my + 3) + "\" fill=\"" + (dead ? "#888" : col) + "\">" +
+                 label + (dead ? " (code " + esc(inst.end_code) + ")" : "") +
+                 (inst.redeemed ? " · +" + inst.redeemed + "F" : "") + "</text>");
+    }
+  }
+
+  /* protection slot node */
+  var vendors = s.protection_vendors || [];
+  var pfill = vendors.length ? "#eef7ee" : "#f2f2f2";
+  var pstk = vendors.length ? "#4daf4a" : "#bbb";
+  parts.push("<rect x=\"380\" y=\"355\" width=\"140\" height=\"60\" rx=\"4\" " +
+             "fill=\"" + pfill + "\" stroke=\"" + pstk + "\" stroke-width=\"1.5\"/>");
+  parts.push("<text class=\"host-label\" x=\"390\" y=\"372\">protection</text>");
+  parts.push("<text class=\"edge-label\" x=\"390\" y=\"386\">" +
+             esc(vendors.length ? vendors.join(", ") : "none (empty slot)") +
+             "</text>");
+  parts.push("<text class=\"edge-label\" x=\"390\" y=\"399\">" +
+             esc(vendors.length ? "watching c0net + n1" : "join c0net + n1 per contract") +
+             "</text>");
+
+  /* spawn edges: parent marker → child marker */
+  var pos = {};
+  for (var oi = 0; oi < order.length; oi++) {
+    var hn2 = order[oi];
+    var hr2 = HOST_RECT[hn2] || null;
+    var cx2 = hr2 ? hr2[0] + hr2[2] / 2 : 500 + (oi % 5) * 78 + 36;
+    var y2 = hr2 ? hr2[1] + hr2[3] + 18 : 250 + 40 + 18;
+    var mine2 = (s.instances || []).filter(function (inst) {
+      return inst.host === hn2;
+    });
+    for (var mi2 = 0; mi2 < mine2.length; mi2++) {
+      pos[mine2[mi2].id] = [cx2, y2 + mi2 * 22];
+    }
+  }
+  for (var li = 0; li < (s.instances || []).length; li++) {
+    var inst2 = s.instances[li];
+    if (!inst2.parent || !pos[inst2.id] || !pos[inst2.parent]) { continue; }
+    var a = pos[inst2.parent], b = pos[inst2.id];
+    var col2 = instColor(s.instances, inst2.id);
+    parts.push("<path d=\"M " + a[0] + " " + a[1] + " L " + b[0] + " " + b[1] +
+               "\" stroke=\"" + col2 + "\" stroke-width=\"1.5\" " +
+               "stroke-opacity=\".7\" fill=\"none\"><title>spawn edge: " +
+               esc(inst2.parent + " → " + inst2.id) + "</title></path>");
+  }
+
+  parts.push("</svg>");
+  el.innerHTML = parts.join("");
+
+  var lg = document.getElementById("map-legend");
+  var items = "Host gates: ";
+  for (var li2 = 0; li2 < GATE_CHIPS.length; li2++) {
+    items += "<span style=\"color:" + GATE_CHIPS[li2][2] + ";font-weight:700\">" +
+             GATE_CHIPS[li2][0] + "</span>=" + GATE_CHIPS[li2][1] +
+             (li2 < GATE_CHIPS.length - 1 ? " · " : "");
+  }
+  items += " · instance colors: ";
+  for (var li3 = 0; li3 < (s.instances || []).length; li3++) {
+    items += "<span class=\"sw\" style=\"background:" +
+             instColor(s.instances, s.instances[li3].id) + "\"></span>" +
+             esc(s.instances[li3].id) + " (" +
+             esc(fmtBal(s.instances[li3].wallet)) + "cr" +
+             (s.instances[li3].alive ? "" : ", dead") + ") ";
+  }
+  lg.innerHTML = items;
+}
+
+/* ---- wallets ---------------------------------------------------------- */
+
+function renderWallets(s) {
+  var el = document.getElementById("wallets");
+  var insts = s.instances || [];
+  var W = 900, H = 210, x0 = 70, plotW = W - x0 - 16, yTop = 24, yBot = H - 30;
+  var t0 = s.t0;
+  var tEnd = s.generated_at || (new Date().getTime() / 1000);
+  var ledger = s.wallet_ledger || [];
+  var maxT = tEnd;
+  for (var i = 0; i < insts.length; i++) {
+    var hist = insts[i].wallet_history || [];
+    if (hist.length) {
+      maxT = Math.max(maxT, hist[hist.length - 1][0]);
+    }
+  }
+  var span = Math.max(maxT - (t0 || 0), 1);
+  var bMin = 0, bMax = 1;
+  for (var j = 0; j < ledger.length; j++) {
+    var b = ledger[j].balance_after || 0;
+    if (b < bMin) { bMin = b; }
+    if (b > bMax) { bMax = b; }
+  }
+  if (bMax === bMin) { bMax = bMin + 1; }
+
+  function x(t) {
+    return x0 + ((t - (t0 || 0)) / span) * plotW;
+  }
+  function y(b) {
+    return yBot - ((b - bMin) / (bMax - bMin)) * (yBot - yTop);
+  }
+
+  var parts = [];
+  parts.push("<svg width=\"100%\" viewBox=\"0 0 " + W + " " + H +
+             "\" xmlns=\"http://www.w3.org/2000/svg\">");
+  /* zero line = bankruptcy */
+  parts.push("<line x1=\"" + x0 + "\" y1=\"" + y(0) + "\" x2=\"" + (x0 + plotW) +
+             "\" y2=\"" + y(0) + "\" stroke=\"#bbb\" stroke-dasharray=\"4 3\"/>");
+  parts.push("<text class=\"edge-label\" x=\"6\" y=\"" + (y(0) + 3) +
+             "\">balance 0</text>");
+  parts.push("<text class=\"edge-label\" x=\"6\" y=\"" + (yTop + 10) + "\">max " +
+             bMax + "</text>");
+  for (var k = 0; k < insts.length; k++) {
+    var inst = insts[k];
+    var hist2 = inst.wallet_history || [];
+    if (!hist2.length) { continue; }
+    var col = instColor(insts, inst.id);
+    var d = "M " + x(hist2[0][0]).toFixed(1) + " " + y(hist2[0][1]).toFixed(1);
+    var prev = hist2[0][1];
+    for (var p = 1; p < hist2.length; p++) {
+      /* step-lines: horizontal to the new time, then vertical to the new balance */
+      d += " L " + x(hist2[p][0]).toFixed(1) + " " + y(prev).toFixed(1) +
+           " L " + x(hist2[p][0]).toFixed(1) + " " + y(hist2[p][1]).toFixed(1);
+      prev = hist2[p][1];
+    }
+    parts.push("<path d=\"" + d + "\" fill=\"none\" stroke=\"" + col +
+               "\" stroke-width=\"1.8\"><title>" +
+               esc(inst.id + " · balance " + fmtBal(inst.wallet) +
+                   (inst.alive ? " (alive)" : " (dead code " + inst.end_code + ")")) +
+               "</title></path>");
+  }
+  parts.push("<text class=\"edge-label\" x=\"" + x0 + "\" y=\"" + (H - 8) +
+             "\">0 min</text>");
+  parts.push("<text class=\"edge-label\" x=\"" + (x0 + plotW) + "\" y=\"" +
+             (H - 8) + "\" text-anchor=\"end\">" + (span / 60).toFixed(1) +
+             " min</text>");
+  parts.push("</svg>");
+  el.innerHTML = insts.length ? parts.join("") :
+    "<p><i>no wallet movements yet</i></p>";
+
+  var lg = document.getElementById("wallet-legend");
+  var items2 = [];
+  for (var q = 0; q < insts.length; q++) {
+    var inst3 = insts[q];
+    items2.push("<span class=\"sw\" style=\"background:" +
+                instColor(insts, inst3.id) + "\"></span>" +
+                esc(inst3.id) + ": " + esc(fmtBal(inst3.wallet)) + "cr · " +
+                esc(inst3.llm_calls || 0) + " llm-calls · " +
+                esc(inst3.redeemed || 0) + " refuels" +
+                (inst3.alive ? "" : " · dead"));
+  }
+  lg.innerHTML = items2.join(" &nbsp;·&nbsp; ") || "<i>no instances</i>";
+}
+
+/* ---- event stream ----------------------------------------------------- */
+
+var EXCLUDED = {
+  LLM_CALL: 1, WORM_START: 1, WORM_END: 1, DELEGATION: 1, WALLET: 1,
+  REDEEM: 1, REPL_FAIL: 1, RECOVER: 1
+};
+
+function actionChipStyle(tech) {
+  if (tech === "REDEEM") { return "background:#4daf4a;color:#fff"; }
+  if (tech === "WORM_START" || tech === "WORM_END") {
+    return "background:#984ea3;color:#fff";
+  }
+  if (tech === "REPL_FAIL") { return "background:#ff7f00;color:#fff"; }
+  if (EXCLUDED[tech]) { return "background:#999;color:#fff"; }
+  return "background:#377eb8;color:#fff";
+}
+
+function verdictColor(v) {
+  return v === "malicious" ? "#e41a1c" :
+         v === "suspicious" ? "#ff9896" : "#bbb";
+}
+
+function renderStream(s) {
+  var el = document.getElementById("stream");
+  var rows = [];
+  var acts = s.actions || [], evs = s.events || [];
+  for (var i = 0; i < acts.length; i++) {
+    rows.push({t: acts[i].arrival, kind: "action", a: acts[i]});
+  }
+  for (var j = 0; j < evs.length; j++) {
+    rows.push({t: evs[j].arrival, kind: "prot", a: evs[j]});
+  }
+  rows.sort(function (x, y) { return y.t - x.t; });
+  rows = rows.slice(0, 40);
+  var h = "";
+  for (var k = 0; k < rows.length; k++) {
+    var r = rows[k].a;
+    var cls = "srow";
+    var htmlRow = "";
+    if (rows[k].kind === "action") {
+      var tech = r.tech || "?";
+      var chip = actionChipStyle(tech);
+      if (r.control) { cls += " control"; }
+      htmlRow = "<span class=\"stime\">" + esc(fmtClock(s.t0, r.arrival)) +
+        "</span><span class=\"stag\" style=\"" + chip + "\">" + esc(tech) +
+        "</span><span class=\"swho\">" + esc(r.instance_id || "?") +
+        (r.target && r.target !== (r.instance_id || "").split(":")[1]
+          ? " → " + esc(r.target) : "") + "</span><span class=\"sdet\">" +
+        esc(String(r.detail || "").replace(/\s+/g, " ").slice(0, 110)) +
+        "</span>";
+    } else {
+      var v = r.verdict || "benign";
+      cls += " prot-" + v;
+      htmlRow = "<span class=\"stime\">" + esc(fmtClock(s.t0, r.arrival)) +
+        "</span><span class=\"stag\" style=\"background:" + verdictColor(v) +
+        ";color:" + (v === "malicious" ? "#fff" : "#333") + "\">" +
+        esc(v) + "</span><span class=\"swho\">" + esc(r.vendor || "?") +
+        (r.technique ? " · " + esc(r.technique) : "") + "</span><span class=\"sdet\">" +
+        esc(String(r.note || r.object || "").slice(0, 110)) + "</span>";
+    }
+    h += "<div class=\"" + cls + "\">" + htmlRow + "</div>";
+  }
+  el.innerHTML = h || "<p><i>no events yet — waiting for the worm…</i></p>";
+}
+
+/* ---- polling loop ----------------------------------------------------- */
+
+var state = null;
+
+function poll() {
+  fetch("/state").then(function (r) {
+    if (!r.ok) { throw new Error("HTTP " + r.status); }
+    return r.json();
+  }).then(function (s) {
+    state = s;
+    renderStatus(state);
+    renderMap(state);
+    renderWallets(state);
+    renderStream(state);
+  }).catch(function () {
+    document.getElementById("status").innerHTML =
+      "<span class=\"err\">judge unreachable — range down or run not started" +
+      " (start one with <code>./cli/wormbench run --mode smoke</code>)</span>";
+  });
+}
+
+setInterval(poll, POLL_MS);
+poll();
+</script>
+</body>
+</html>

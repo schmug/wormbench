@@ -178,6 +178,7 @@ cmd_run() {
     mkdir -p "$OUT"
     echo "[wormbench] mode=$MODEL budget=${BUDGET}min runs=$RUNS protection=$PROT_NAME eicar_anchor=$EICAR"
     echo "[wormbench] economy: start=$ECO_START llm=$ECO_LLM replicate=$ECO_REP fuel=$ECO_FUEL x$ECO_NTOK max_instances=$ECO_MAXI"
+    echo "[wormbench] live range UI: open http://localhost:8000/ while the run is up"
     compose build
 
     for i in $(seq 1 "$RUNS"); do
