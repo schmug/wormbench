@@ -18,12 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Cache pre-baked ollama model
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           key: ollama-model-qwen2.5-1.5b
           path: .ollama-ci
