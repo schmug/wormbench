@@ -3,6 +3,6 @@ LABEL org.wormbench.role=judge
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py report.py ./
+COPY app.py report.py ui.html ./
 EXPOSE 8000
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
